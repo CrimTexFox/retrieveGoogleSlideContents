@@ -15,26 +15,30 @@ def download_image(url, filename):
     else:
         logging.error(f"Failed to download image from {url}")
 
-def resize_image(image_path, output_folder, aspect_ratio):
-    logging.debug(f"Resizing image {image_path} to aspect ratio {aspect_ratio}")
+def add_black_bars(image_path, output_folder, aspect_ratio):
+    logging.debug(f"Adding black bars to image {image_path} to aspect ratio {aspect_ratio}")
     img = Image.open(image_path)
     width, height = img.size
     
     if aspect_ratio == '4:3':
-        new_height = int(width * 3 / 4)
+        target_width = max(width, int(height * 4 / 3))
+        target_height = max(height, int(width * 3 / 4))
     elif aspect_ratio == '16:9':
-        new_height = int(width * 9 / 16)
+        target_width = max(width, int(height * 16 / 9))
+        target_height = max(height, int(width * 9 / 16))
     else:
         raise ValueError("Unsupported aspect ratio")
 
-    new_img = img.resize((width, new_height), Image.LANCZOS)
+    new_img = Image.new('RGB', (target_width, target_height), (0, 0, 0))
+    offset = ((target_width - width) // 2, (target_height - height) // 2)
+    new_img.paste(img, offset)
     
     if not os.path.exists(output_folder):
         os.makedirs(output_folder)
     
     output_path = os.path.join(output_folder, os.path.basename(image_path))
     new_img.save(output_path)
-    logging.debug(f"Saved resized image {output_path}")
+    logging.debug(f"Saved image with black bars {output_path}")
     return output_path
 
 def save_slides_as_images(presentation_id, slides, service, output_folder='Slides'):
@@ -82,14 +86,22 @@ def process_presentation(presentation_id):
 
         speaker_notes = extract_speaker_notes(slides)
 
+        # Create separate folders for 4:3 and 16:9 images
+        output_folder_4_3 = os.path.join(base_output_folder, '4_3')
+        output_folder_16_9 = os.path.join(base_output_folder, '16_9')
+        if not os.path.exists(output_folder_4_3):
+            os.makedirs(output_folder_4_3)
+        if not os.path.exists(output_folder_16_9):
+            os.makedirs(output_folder_16_9)
+
         slide_data = {}
         for i, filename in enumerate(image_filenames):
             slide_number = f"slide_{i + 1}"
             slide_data[slide_number] = {
                 "original": filename,
                 "notes": speaker_notes.get(slide_number, ""),
-                "4:3": resize_image(filename, os.path.join(base_output_folder, '4_3'), '4:3'),
-                "16:9": resize_image(filename, os.path.join(base_output_folder, '16_9'), '16:9')
+                "4:3": add_black_bars(filename, output_folder_4_3, '4:3'),
+                "16:9": add_black_bars(filename, output_folder_16_9, '16:9')
             }
 
         json_file = os.path.join(base_output_folder, 'slides_data.json')
